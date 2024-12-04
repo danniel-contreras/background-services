@@ -1,74 +1,118 @@
-import { Image, StyleSheet, Platform } from 'react-native';
+import { useState, useEffect } from 'react';
+import { StyleSheet, Text, View, Button } from 'react-native';
+import * as BackgroundFetch from 'expo-background-fetch';
+import * as TaskManager from 'expo-task-manager';
+import * as Notifications from 'expo-notifications';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+const BACKGROUND_FETCH_TASK = 'background-fetch';
+let messageCounter = 0; // Contador para mensajes dinámicos
 
-export default function HomeScreen() {
+// Configuración de las notificaciones
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+  }),
+});
+
+// Define la tarea en segundo plano
+TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
+  try {
+    messageCounter++;
+    const message = `Notificación de fondo #${messageCounter}: ${new Date().toLocaleTimeString()}`;
+
+    console.log(message);
+
+    // Envía una notificación local
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Tarea en segundo plano',
+        body: message,
+      },
+      trigger: null, // Inmediata
+    });
+
+    return BackgroundFetch.BackgroundFetchResult.NewData;
+  } catch (error) {
+    console.error(error);
+    return BackgroundFetch.BackgroundFetchResult.Failed;
+  }
+});
+
+// Registrar la tarea
+async function registerBackgroundFetchAsync() {
+  return BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
+    minimumInterval: 10, // Configurado como mínimo cada 15 minutos
+    stopOnTerminate: false,
+    startOnBoot: true,
+  });
+}
+
+// Desregistrar la tarea
+async function unregisterBackgroundFetchAsync() {
+  return BackgroundFetch.unregisterTaskAsync(BACKGROUND_FETCH_TASK);
+}
+
+export default function App() {
+  const [isRegistered, setIsRegistered] = useState(false);
+  const [status, setStatus] = useState<BackgroundFetch.BackgroundFetchStatus | null>(null);
+
+  useEffect(() => {
+    checkStatusAsync();
+  }, []);
+
+  const checkStatusAsync = async () => {
+    const status = await BackgroundFetch.getStatusAsync();
+    const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_FETCH_TASK);
+    setStatus(status);
+    setIsRegistered(isRegistered);
+  };
+
+  const toggleFetchTask = async () => {
+    if (isRegistered) {
+      await unregisterBackgroundFetchAsync();
+    } else {
+      await registerBackgroundFetchAsync();
+    }
+
+    checkStatusAsync();
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12'
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <View style={styles.screen}>
+      <View style={styles.textContainer}>
+        <Text>
+          Estado de Background Fetch:{' '}
+          <Text style={styles.boldText}>
+            {status && BackgroundFetch.BackgroundFetchStatus[status]}
+          </Text>
+        </Text>
+        <Text>
+          Nombre de la tarea:{' '}
+          <Text style={styles.boldText}>
+            {isRegistered ? BACKGROUND_FETCH_TASK : 'No registrada'}
+          </Text>
+        </Text>
+      </View>
+      <Button
+        title={isRegistered ? 'Desregistrar tarea' : 'Registrar tarea'}
+        onPress={toggleFetchTask}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  screen: {
+    flex: 1,
+    justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  textContainer: {
+    margin: 10,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  boldText: {
+    fontWeight: 'bold',
   },
 });
